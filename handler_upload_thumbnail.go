@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -19,8 +17,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
 		return
 	}
-
-	fmt.Println("Authorization:", r.Header.Get("Authorization"))
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -44,11 +40,36 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
-	if mediaType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+	mediaType,_, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
 		return
 	}
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(
+			w,
+			http.StatusBadRequest,
+			"Thumbnail must be a JPEG or PNG image",
+			nil,
+		)
+		return
+	}
+
+	assetPath := getAssetPath(videoID, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
+
+	dst, err := os.Create(assetDiskPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to create file on server", err)
+		return
+	}
+	defer dst.Close()
+	if _, err = io.Copy(dst, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error saving file", err)
+		return
+	}
+
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
@@ -58,30 +79,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", nil)
 		return
 	}
-	extensions, err := mime.ExtensionsByType(mediaType)
-	if err != nil || len(extensions) == 0 {
-		respondWithError(w, http.StatusBadRequest, "Unsupported media type", err)
-		return
-	}
 
-	ext := extensions[0]
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/assets/%s%s",cfg.port,videoID,ext)
-	filePath := filepath.Join(
-		cfg.assetsRoot,
-		fmt.Sprintf("%s%s", videoID, ext),
-	)
-	dst, err := os.Create(filePath)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't create file", err)
-		return
-	}
-	defer dst.Close()
-	_, err = io.Copy(dst, file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't save file", err)
-		return
-	}
-	video.ThumbnailURL = &thumbnailURL
+	url := cfg.getAssetURL(assetPath)
+	video.ThumbnailURL = &url
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update video", err)
