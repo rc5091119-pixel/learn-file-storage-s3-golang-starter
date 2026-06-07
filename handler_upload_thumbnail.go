@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"io"
 	"mime"
 	"net/http"
@@ -40,23 +42,34 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType,_, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
 		return
 	}
-
 	if mediaType != "image/jpeg" && mediaType != "image/png" {
-		respondWithError(
-			w,
-			http.StatusBadRequest,
-			"Thumbnail must be a JPEG or PNG image",
-			nil,
-		)
+		respondWithError(w, http.StatusBadRequest, "Invalid file type", nil)
 		return
 	}
 
-	assetPath := getAssetPath(videoID, mediaType)
+	key := make([]byte, 32)
+
+	_, err = rand.Read(key)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't generate random filename", err)
+		return
+	}
+
+	randomName := base64.RawURLEncoding.EncodeToString(key)
+	var ext string
+
+	switch mediaType {
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg":
+		ext = ".jpg"
+	}
+	assetPath := randomName + ext
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	dst, err := os.Create(assetDiskPath)
@@ -69,7 +82,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusInternalServerError, "Error saving file", err)
 		return
 	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
