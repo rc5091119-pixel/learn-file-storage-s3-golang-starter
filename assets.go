@@ -10,8 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"honnef.co/go/tools/go/ir"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -63,11 +61,11 @@ func (cfg apiConfig) getVideoAspectRatio(filePath string) (string, error) {
 	}
 	var result ProbeResult
 
-	err = json.Unmarshal(buf.Bytes(),&result)
+	err = json.Unmarshal(buf.Bytes(), &result)
 	if err != nil {
-		return "",err
+		return "", err
 	}
-	return "",nil
+	return "", nil
 }
 
 func mediaTypeToExt(mediaType string) string {
