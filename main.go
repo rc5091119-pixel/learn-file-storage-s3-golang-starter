@@ -69,7 +69,7 @@ func main() {
 		log.Fatal("S3_REGION environment variable is not set")
 	}
 
-	s3CfDistribution := os.Getenv("S3_CF_DISTRO")
+	s3CfDistribution := os.Getenv("S3_CF_DISTRIBUTION")
 	if s3CfDistribution == "" {
 		log.Fatal("S3_CF_DISTRO environment variable is not set")
 	}
